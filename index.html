@@ -1,0 +1,416 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>캘린더</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;700&display=swap">
+<style>
+:root{
+  --bg:#F3F5F9;--card:#FFFFFF;--chip:#EDF0F5;--text:#1A1F2B;--sub:#525B6B;
+  --accent:#3D6BEA;--accent-text:#FFFFFF;--danger:#C2255C;
+  --shadow:0 2px 10px rgba(30,45,80,.06);--backdrop:rgba(20,26,40,.45);
+}
+.c0{--tint:#E3EAFF;--dot:#3D6BEA}.c1{--tint:#FFE8DB;--dot:#C2470A}.c2{--tint:#DCF2E9;--dot:#0B7A5B}
+.c3{--tint:#ECE4FB;--dot:#7C4DDB}.c4{--tint:#FBE1EA;--dot:#C2255C}
+@media (prefers-color-scheme: dark){
+  :root{
+    --bg:#10131A;--card:#1A1F29;--chip:#272E3A;--text:#F3F5F8;--sub:#AEB7C4;
+    --accent:#8FAAFF;--accent-text:#0E1530;--danger:#FF8FB0;
+    --shadow:none;--backdrop:rgba(0,0,0,.6);
+  }
+  .c0{--tint:#232C4A;--dot:#8FAAFF}.c1{--tint:#3D2C23;--dot:#FF9A66}.c2{--tint:#1F3A30;--dot:#4FD1A5}
+  .c3{--tint:#30264A;--dot:#B79CFF}.c4{--tint:#43202E;--dot:#FF8FB0}
+}
+*{box-sizing:border-box}
+html,body{margin:0}
+body{background:var(--bg);color:var(--text);font-family:'Noto Sans KR',system-ui,sans-serif;-webkit-text-size-adjust:100%}
+button,input{font-family:inherit;color:inherit}
+button{cursor:pointer;border:0;background:none;padding:0}
+:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
+.app{max-width:430px;margin:0 auto;min-height:100vh;padding:20px 16px 110px;display:flex;flex-direction:column;gap:16px}
+.top{display:flex;align-items:center;gap:8px;padding:0 4px}
+.top h1{margin:0;flex:1;font-size:26px;font-weight:700}
+.round{width:44px;height:44px;border-radius:22px;background:var(--card);display:flex;align-items:center;justify-content:center}
+.today-btn{height:44px;padding:0 16px;border-radius:22px;background:var(--card);font-size:15px;font-weight:500}
+.cal{background:var(--card);border-radius:28px;padding:14px 12px;box-shadow:var(--shadow);display:flex;flex-direction:column;gap:6px}
+.grid{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:2px}
+.wd{margin:0;text-align:center;font-size:14px;font-weight:500;color:var(--sub);padding:4px 0}
+.day{height:50px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;border-radius:16px}
+.day .num{width:38px;height:38px;border-radius:19px;display:flex;align-items:center;justify-content:center;font-size:17px;font-weight:500}
+.day .dot{width:6px;height:6px;border-radius:3px;background:transparent}
+.day.has .dot{background:var(--accent)}
+.day.today .num{box-shadow:inset 0 0 0 2px var(--accent);font-weight:700}
+.day.sel .num{background:var(--accent);color:var(--accent-text);font-weight:700;box-shadow:none}
+.list{display:flex;flex-direction:column;gap:10px}
+.list h2{margin:0;padding:0 4px;font-size:18px;font-weight:700}
+.empty{margin:0;padding:22px 16px;border-radius:24px;background:var(--card);color:var(--sub);font-size:16px;text-align:center}
+.ev{width:100%;text-align:left;display:flex;align-items:center;gap:14px;padding:12px 14px;border-radius:24px;background:var(--card);box-shadow:var(--shadow)}
+.ev .time{flex:none;width:72px;height:44px;border-radius:22px;background:var(--tint);display:flex;align-items:center;justify-content:center;font-size:16px;font-weight:700}
+.ev .body{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px}
+.ev .title{font-size:18px;font-weight:700;line-height:1.3;overflow-wrap:anywhere}
+.ev .place{font-size:15px;color:var(--sub);overflow-wrap:anywhere}
+.fab{position:fixed;right:max(16px,calc(50% - 199px));bottom:24px;width:64px;height:64px;border-radius:32px;background:var(--accent);color:var(--accent-text);box-shadow:0 6px 16px rgba(30,45,80,.22);display:flex;align-items:center;justify-content:center}
+.backdrop{position:fixed;inset:0;background:var(--backdrop);display:flex;align-items:flex-end;justify-content:center}
+.backdrop[hidden]{display:none}
+.sheet{width:100%;max-width:430px;max-height:92vh;overflow-y:auto;background:var(--bg);border-radius:28px 28px 0 0;padding:20px 16px 24px;display:flex;flex-direction:column;gap:14px}
+.sheet h2{margin:0;padding:0 4px;font-size:22px;font-weight:700}
+.field{display:flex;flex-direction:column;gap:6px}
+.field label,.field .lab{padding:0 4px;font-size:15px;font-weight:500;color:var(--sub)}
+.field input[type=text],.field input[type=date],.field input[type=time]{width:100%;height:52px;padding:0 18px;border:0;border-radius:26px;background:var(--card);font-size:17px}
+.field input::placeholder{color:inherit;opacity:.6}
+.two{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+.colors{display:flex;gap:14px;padding:4px}
+.colors label{position:relative;width:44px;height:44px;border-radius:22px;background:var(--dot);display:flex;align-items:center;justify-content:center;cursor:pointer;padding:0}
+.colors input{position:absolute;opacity:0;width:100%;height:100%;margin:0;cursor:pointer}
+.colors svg{display:none;color:#fff}
+.colors input:checked + svg{display:block}
+.colors label:has(input:checked){box-shadow:0 0 0 3px var(--bg),0 0 0 6px var(--dot)}
+.colors label:has(input:focus-visible){outline:3px solid var(--accent);outline-offset:6px}
+@media (prefers-color-scheme: dark){.colors svg{color:#10131A}}
+.err{margin:0;padding:0 4px;font-size:15px;color:var(--danger)}
+.actions{display:flex;gap:10px;margin-top:4px}
+.btn{height:54px;border-radius:27px;font-size:17px;font-weight:700;padding:0 22px;background:var(--card)}
+.btn.primary{flex:1;background:var(--accent);color:var(--accent-text)}
+.btn.danger{color:var(--danger)}
+.note{margin:0;padding:0 4px;font-size:14px;color:var(--sub);line-height:1.5}
+[hidden]{display:none !important}
+.login{max-width:430px;margin:0 auto;min-height:100vh;padding:24px 20px;display:flex;flex-direction:column;justify-content:center;gap:16px}
+.login h1{margin:0;font-size:34px;font-weight:700}
+.login p{margin:0;font-size:17px;line-height:1.6;color:var(--sub)}
+.login .btn{margin-top:8px}
+.login .btn:disabled{opacity:.6;cursor:default}
+.acct{display:flex;align-items:center;gap:10px;padding:0 4px}
+.acct .note{flex:1;min-width:0;padding:0;overflow-wrap:anywhere}
+</style>
+</head>
+<body>
+<main class="login" id="loginView">
+  <h1>캘린더</h1>
+  <p>로그인하면 폰과 다른 기기에서 같은 일정을 볼 수 있어요.</p>
+  <button class="btn primary" id="loginBtn" type="button" disabled>Google 계정으로 로그인</button>
+  <p id="loginMsg" role="status">불러오는 중…</p>
+</main>
+
+<main class="app" id="appView" hidden>
+  <header class="top">
+    <h1 id="monthTitle"></h1>
+    <button class="today-btn" id="todayBtn" type="button">오늘</button>
+    <button class="round" id="prevBtn" type="button" aria-label="이전 달">
+      <svg aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M15 5l-7 7 7 7"/></svg>
+    </button>
+    <button class="round" id="nextBtn" type="button" aria-label="다음 달">
+      <svg aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M9 5l7 7-7 7"/></svg>
+    </button>
+  </header>
+
+  <section class="cal" aria-label="월간 달력">
+    <div class="grid" aria-hidden="true">
+      <p class="wd">일</p><p class="wd">월</p><p class="wd">화</p><p class="wd">수</p><p class="wd">목</p><p class="wd">금</p><p class="wd">토</p>
+    </div>
+    <div class="grid" id="days"></div>
+  </section>
+
+  <section class="list" aria-live="polite">
+    <h2 id="dayTitle"></h2>
+    <div class="list" id="events"></div>
+  </section>
+
+  <p class="err" id="syncErr" role="alert" hidden></p>
+  <div class="acct">
+    <p class="note" id="acctText"></p>
+    <button class="today-btn" id="logoutBtn" type="button">로그아웃</button>
+  </div>
+</main>
+
+<button class="fab" id="addBtn" type="button" hidden aria-label="일정 추가">
+  <svg aria-hidden="true" width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg>
+</button>
+
+<div class="backdrop" id="backdrop" hidden>
+  <form class="sheet" id="form" role="dialog" aria-modal="true" aria-labelledby="sheetTitle" novalidate>
+    <h2 id="sheetTitle">일정 추가</h2>
+    <div class="field">
+      <label for="fTitle">제목</label>
+      <input id="fTitle" type="text" placeholder="예: 치과 예약" autocomplete="off" maxlength="60">
+    </div>
+    <div class="field">
+      <label for="fPlace">장소 (선택)</label>
+      <input id="fPlace" type="text" placeholder="예: 시청역 2번 출구" autocomplete="off" maxlength="60">
+    </div>
+    <div class="two">
+      <div class="field">
+        <label for="fDate">날짜</label>
+        <input id="fDate" type="date">
+      </div>
+      <div class="field">
+        <label for="fTime">시간</label>
+        <input id="fTime" type="time">
+      </div>
+    </div>
+    <div class="field" role="radiogroup" aria-labelledby="colorLab">
+      <span class="lab" id="colorLab">색상</span>
+      <div class="colors" id="colors"></div>
+    </div>
+    <p class="err" id="err" role="alert" hidden></p>
+    <div class="actions">
+      <button class="btn danger" id="delBtn" type="button" hidden>삭제</button>
+      <button class="btn" id="cancelBtn" type="button">취소</button>
+      <button class="btn primary" type="submit">저장</button>
+    </div>
+  </form>
+</div>
+
+<script type="module">
+import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js';
+import { getAuth, GoogleAuthProvider, signInWithPopup, onAuthStateChanged, signOut } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js';
+import { getFirestore, collection, doc, setDoc, deleteDoc, onSnapshot } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
+
+const firebaseConfig = {
+  apiKey: "AIzaSyBrQMaL4z8nAAvhHIjCgA2YCVgsOw1Mc1k",
+  authDomain: "cleoscallender.firebaseapp.com",
+  projectId: "cleoscallender",
+  storageBucket: "cleoscallender.firebasestorage.app",
+  messagingSenderId: "923093776437",
+  appId: "1:923093776437:web:a126f1b9603324e21ed97c"
+};
+
+const app = initializeApp(firebaseConfig);
+const auth = getAuth(app);
+const db = getFirestore(app);
+
+const COLOR_NAMES = ['파랑', '주황', '초록', '보라', '분홍'];
+const WEEK = ['일', '월', '화', '수', '목', '금', '토'];
+const $ = (id) => document.getElementById(id);
+
+const pad = (n) => (n < 10 ? '0' : '') + n;
+const key = (y, m, d) => y + '-' + pad(m + 1) + '-' + pad(d);
+const parse = (k) => { const p = k.split('-'); return new Date(+p[0], +p[1] - 1, +p[2]); };
+
+const now = new Date();
+const todayKey = key(now.getFullYear(), now.getMonth(), now.getDate());
+let view = { y: now.getFullYear(), m: now.getMonth() };
+let selected = todayKey;
+let editingId = null;
+let deleteArmed = false;
+let lastFocus = null;
+let events = [];
+let uid = null;
+let unsub = null;
+
+function showSync(msg) { const el = $('syncErr'); el.textContent = msg; el.hidden = false; }
+
+function eventsOn(k) {
+  return events.filter((e) => e.date === k)
+    .sort((a, b) => (a.time || '').localeCompare(b.time || ''));
+}
+
+function renderCalendar() {
+  $('monthTitle').textContent = view.y + '년 ' + (view.m + 1) + '월';
+  const box = $('days');
+  box.textContent = '';
+  const first = new Date(view.y, view.m, 1).getDay();
+  const count = new Date(view.y, view.m + 1, 0).getDate();
+  const has = {};
+  events.forEach((e) => { has[e.date] = true; });
+  for (let i = 0; i < first; i++) box.appendChild(document.createElement('span'));
+  for (let d = 1; d <= count; d++) {
+    const k = key(view.y, view.m, d);
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'day' + (k === todayKey ? ' today' : '') + (k === selected ? ' sel' : '') + (has[k] ? ' has' : '');
+    b.setAttribute('aria-label', (view.m + 1) + '월 ' + d + '일' + (k === todayKey ? ', 오늘' : '') + (has[k] ? ', 일정 있음' : ''));
+    b.setAttribute('aria-pressed', k === selected ? 'true' : 'false');
+    const num = document.createElement('span'); num.className = 'num'; num.textContent = d;
+    const dot = document.createElement('span'); dot.className = 'dot';
+    b.appendChild(num); b.appendChild(dot);
+    b.addEventListener('click', () => { selected = k; render(); });
+    box.appendChild(b);
+  }
+}
+
+function renderList() {
+  const dt = parse(selected);
+  $('dayTitle').textContent = (dt.getMonth() + 1) + '월 ' + dt.getDate() + '일 ' + WEEK[dt.getDay()] + '요일' + (selected === todayKey ? ' · 오늘' : '');
+  const box = $('events');
+  box.textContent = '';
+  const list = eventsOn(selected);
+  if (!list.length) {
+    const p = document.createElement('p');
+    p.className = 'empty';
+    p.textContent = '일정이 없어요. 아래 + 버튼으로 추가해 보세요.';
+    box.appendChild(p);
+    return;
+  }
+  list.forEach((e) => {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'ev c' + (e.color || 0);
+    const t = document.createElement('span'); t.className = 'time'; t.textContent = e.time || '하루';
+    const body = document.createElement('span'); body.className = 'body';
+    const title = document.createElement('span'); title.className = 'title'; title.textContent = e.title;
+    body.appendChild(title);
+    if (e.place) {
+      const pl = document.createElement('span'); pl.className = 'place'; pl.textContent = e.place;
+      body.appendChild(pl);
+    }
+    b.appendChild(t); b.appendChild(body);
+    b.setAttribute('aria-label', (e.time || '하루 종일') + ' ' + e.title + (e.place ? ', ' + e.place : '') + ', 눌러서 수정');
+    b.addEventListener('click', () => openSheet(e));
+    box.appendChild(b);
+  });
+}
+
+function render() { renderCalendar(); renderList(); }
+
+function buildColors() {
+  const box = $('colors');
+  COLOR_NAMES.forEach((name, i) => {
+    const label = document.createElement('label');
+    label.className = 'c' + i;
+    const input = document.createElement('input');
+    input.type = 'radio'; input.name = 'color'; input.value = String(i);
+    input.setAttribute('aria-label', name);
+    label.appendChild(input);
+    const NS = 'http://www.w3.org/2000/svg';
+    const svg = document.createElementNS(NS, 'svg');
+    svg.setAttribute('aria-hidden', 'true'); svg.setAttribute('width', '22'); svg.setAttribute('height', '22');
+    svg.setAttribute('viewBox', '0 0 24 24'); svg.setAttribute('fill', 'none'); svg.setAttribute('stroke', 'currentColor');
+    svg.setAttribute('stroke-width', '3'); svg.setAttribute('stroke-linecap', 'round'); svg.setAttribute('stroke-linejoin', 'round');
+    const path = document.createElementNS(NS, 'path');
+    path.setAttribute('d', 'M5 12l5 5 9-10');
+    svg.appendChild(path);
+    label.appendChild(svg);
+    box.appendChild(label);
+  });
+}
+
+function setColor(i) {
+  document.querySelectorAll('input[name=color]').forEach((r, n) => { r.checked = (n === i); });
+}
+function getColor() {
+  const r = document.querySelector('input[name=color]:checked');
+  return r ? +r.value : 0;
+}
+
+function openSheet(ev) {
+  lastFocus = document.activeElement;
+  editingId = ev ? ev.id : null;
+  deleteArmed = false;
+  $('sheetTitle').textContent = ev ? '일정 수정' : '일정 추가';
+  $('fTitle').value = ev ? ev.title : '';
+  $('fPlace').value = ev ? (ev.place || '') : '';
+  $('fDate').value = ev ? ev.date : selected;
+  $('fTime').value = ev ? (ev.time || '') : '';
+  setColor(ev ? (ev.color || 0) : 0);
+  $('delBtn').hidden = !ev;
+  $('delBtn').textContent = '삭제';
+  $('err').hidden = true;
+  $('backdrop').hidden = false;
+  $('fTitle').focus();
+}
+
+function closeSheet() {
+  $('backdrop').hidden = true;
+  editingId = null;
+  if (lastFocus && lastFocus.focus) { try { lastFocus.focus(); } catch (e) {} }
+}
+
+function showErr(msg) { const el = $('err'); el.textContent = msg; el.hidden = false; }
+
+$('form').addEventListener('submit', (e) => {
+  e.preventDefault();
+  if (!uid) return;
+  const title = $('fTitle').value.trim();
+  const date = $('fDate').value;
+  if (!title) { showErr('제목을 입력해 주세요.'); $('fTitle').focus(); return; }
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) { showErr('날짜를 골라 주세요.'); $('fDate').focus(); return; }
+  const data = { title: title, place: $('fPlace').value.trim(), date: date, time: $('fTime').value || '', color: getColor() };
+  const id = editingId || (String(Date.now()) + Math.random().toString(36).slice(2, 7));
+  setDoc(doc(db, 'users', uid, 'events', id), data)
+    .catch(() => showSync('저장하지 못했어요. 인터넷 연결을 확인하고 다시 시도해 주세요.'));
+  selected = date;
+  const dt = parse(date);
+  view = { y: dt.getFullYear(), m: dt.getMonth() };
+  closeSheet();
+  render();
+});
+
+$('delBtn').addEventListener('click', () => {
+  if (!uid || !editingId) return;
+  if (!deleteArmed) {
+    deleteArmed = true;
+    $('delBtn').textContent = '정말 삭제';
+    return;
+  }
+  deleteDoc(doc(db, 'users', uid, 'events', editingId))
+    .catch(() => showSync('삭제하지 못했어요. 인터넷 연결을 확인하고 다시 시도해 주세요.'));
+  closeSheet();
+});
+
+$('cancelBtn').addEventListener('click', closeSheet);
+$('backdrop').addEventListener('click', (e) => { if (e.target === $('backdrop')) closeSheet(); });
+$('form').addEventListener('keydown', (e) => { if (e.key === 'Escape') closeSheet(); });
+$('addBtn').addEventListener('click', () => openSheet(null));
+$('prevBtn').addEventListener('click', () => {
+  view.m--; if (view.m < 0) { view.m = 11; view.y--; }
+  renderCalendar();
+});
+$('nextBtn').addEventListener('click', () => {
+  view.m++; if (view.m > 11) { view.m = 0; view.y++; }
+  renderCalendar();
+});
+$('todayBtn').addEventListener('click', () => {
+  view = { y: now.getFullYear(), m: now.getMonth() };
+  selected = todayKey;
+  render();
+});
+
+$('loginBtn').addEventListener('click', () => {
+  $('loginMsg').textContent = '';
+  signInWithPopup(auth, new GoogleAuthProvider()).catch((e) => {
+    const code = (e && e.code) || '';
+    let msg = '로그인하지 못했어요. (' + code + ')';
+    if (code === 'auth/popup-closed-by-user' || code === 'auth/cancelled-popup-request') msg = '';
+    if (code === 'auth/popup-blocked') msg = '로그인 창이 막혔어요. 브라우저의 팝업 차단을 풀고 다시 눌러 주세요.';
+    if (code === 'auth/unauthorized-domain') msg = '이 주소가 Firebase의 승인된 도메인에 등록되어 있지 않아요.';
+    if (code === 'auth/operation-not-allowed') msg = 'Firebase에서 Google 로그인이 아직 사용 설정되지 않았어요.';
+    $('loginMsg').textContent = msg;
+  });
+});
+
+$('logoutBtn').addEventListener('click', () => { signOut(auth).catch(() => {}); });
+
+onAuthStateChanged(auth, (user) => {
+  if (unsub) { unsub(); unsub = null; }
+  if (user) {
+    uid = user.uid;
+    $('loginView').hidden = true;
+    $('appView').hidden = false;
+    $('addBtn').hidden = false;
+    $('acctText').textContent = (user.email || '로그인한 계정') + ' 계정에 저장됩니다.';
+    $('syncErr').hidden = true;
+    render();
+    unsub = onSnapshot(collection(db, 'users', uid, 'events'), (snap) => {
+      events = snap.docs.map((d) => Object.assign({}, d.data(), { id: d.id })).filter((e) => e.title && e.date);
+      $('syncErr').hidden = true;
+      render();
+    }, () => {
+      showSync('일정을 불러오지 못했어요. Firestore 보안 규칙과 인터넷 연결을 확인해 주세요.');
+    });
+  } else {
+    uid = null;
+    events = [];
+    $('backdrop').hidden = true;
+    $('appView').hidden = true;
+    $('addBtn').hidden = true;
+    $('loginView').hidden = false;
+    $('loginBtn').disabled = false;
+    $('loginMsg').textContent = '';
+  }
+});
+
+buildColors();
+</script>
+</body>
+</html>
