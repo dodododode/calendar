@@ -85,6 +85,12 @@ select.pick{-webkit-appearance:none;appearance:none;display:block;line-height:52
 .pk-bottom{display:flex;align-items:center;gap:10px;padding:0 4px}
 .pk-bottom .note{flex:1;padding:0}
 .picker .round.ok{flex:none;width:52px;height:52px;border-radius:26px;background:var(--accent);color:var(--accent-text)}
+.time-row{display:flex;gap:10px}
+.time-row select{flex:1;min-width:0}
+.seg{flex:none;display:flex;gap:4px;padding:4px;border-radius:26px;background:var(--card)}
+.seg button{height:44px;padding:0 16px;border-radius:22px;font-size:16px;font-weight:500}
+.seg button.on{background:var(--accent);color:var(--accent-text);font-weight:700}
+.seg.off{opacity:.5}
 .ev .nodot{flex:none;width:12px;height:12px;border-radius:6px;background:var(--dot);margin:0 4px}
 .two{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
 .colors{display:flex;gap:14px;padding:4px}
@@ -187,7 +193,13 @@ select.pick{-webkit-appearance:none;appearance:none;display:block;line-height:52
     </div>
     <div class="field">
       <label for="fTime">시간</label>
-      <select class="pick" id="fTime"></select>
+      <div class="time-row">
+        <div class="seg" id="ampm" role="group" aria-label="오전 오후">
+          <button type="button" id="amBtn">오전</button>
+          <button type="button" id="pmBtn">오후</button>
+        </div>
+        <select class="pick" id="fTime"></select>
+      </div>
     </div>
     <div class="field" role="radiogroup" aria-labelledby="colorLab">
       <span class="lab" id="colorLab">색상</span>
@@ -464,26 +476,53 @@ $('pkOk').addEventListener('click', () => {
   $('dateBtn').focus();
 });
 
-/* 시간: 30분 단위 */
-function timeLabel(v) {
-  const h = +v.slice(0, 2), mm = v.slice(3, 5);
-  return (h < 12 ? '오전 ' : '오후 ') + ((h % 12) || 12) + ':' + mm;
+/* 시간: 오전/오후를 고르고, 옆에서 30분 단위로 선택 */
+let isPm = false;
+function paintAmPm() {
+  $('amBtn').className = isPm ? '' : 'on';
+  $('pmBtn').className = isPm ? 'on' : '';
+  $('amBtn').setAttribute('aria-pressed', isPm ? 'false' : 'true');
+  $('pmBtn').setAttribute('aria-pressed', isPm ? 'true' : 'false');
+  $('ampm').className = 'seg' + ($('fTime').value ? '' : ' off');
 }
 function buildTimes() {
   const sel = $('fTime');
   const add = (v, label) => { const o = document.createElement('option'); o.value = v; o.textContent = label; sel.appendChild(o); };
   add('', '시간 없음');
-  for (let h = 0; h < 24; h++) ['00', '30'].forEach((mm) => { const v = pad(h) + ':' + mm; add(v, timeLabel(v)); });
+  [12, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11].forEach((h) => {
+    ['00', '30'].forEach((mm) => add(h + ':' + mm, h + ':' + mm));
+  });
+  sel.addEventListener('change', paintAmPm);
+  $('amBtn').addEventListener('click', () => { isPm = false; paintAmPm(); });
+  $('pmBtn').addEventListener('click', () => { isPm = true; paintAmPm(); });
 }
+/* 저장된 시간("14:30")을 화면에 반영 */
 function setTime(v) {
   const sel = $('fTime');
   sel.querySelectorAll('option[data-extra]').forEach((o) => o.remove());
-  if (v && !Array.from(sel.options).some((o) => o.value === v)) {
-    // 예전에 30분 단위가 아닌 시간으로 저장한 일정은 그 시간을 그대로 보여 줌
-    const o = document.createElement('option'); o.value = v; o.textContent = timeLabel(v); o.dataset.extra = '1';
-    sel.appendChild(o);
+  if (!v) {
+    sel.value = '';
+    isPm = false;
+  } else {
+    const H = +v.slice(0, 2), mm = v.slice(3, 5);
+    isPm = H >= 12;
+    const val = ((H % 12) || 12) + ':' + mm;
+    if (!Array.from(sel.options).some((o) => o.value === val)) {
+      // 예전에 30분 단위가 아닌 시간으로 저장한 일정은 그 시간을 그대로 보여 줌
+      const o = document.createElement('option'); o.value = val; o.textContent = val; o.dataset.extra = '1';
+      sel.appendChild(o);
+    }
+    sel.value = val;
   }
-  sel.value = v;
+  paintAmPm();
+}
+/* 화면에서 고른 시간을 저장용("14:30")으로 바꿈 */
+function getTime() {
+  const val = $('fTime').value;
+  if (!val) return '';
+  const parts = val.split(':');
+  const H = (+parts[0] % 12) + (isPm ? 12 : 0);
+  return pad(H) + ':' + parts[1];
 }
 
 function closeSheet() {
@@ -502,7 +541,7 @@ $('form').addEventListener('submit', (e) => {
   if (!title) { showErr('제목을 입력해 주세요.'); $('fTitle').focus(); return; }
   if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) { showErr('날짜를 골라 주세요.'); $('dateBtn').focus(); return; }
   const end = formEnd && formEnd > date ? formEnd : '';
-  const data = { title: title, place: $('fPlace').value.trim(), date: date, endDate: end, time: $('fTime').value || '', color: getColor() };
+  const data = { title: title, place: $('fPlace').value.trim(), date: date, endDate: end, time: getTime(), color: getColor() };
   const id = editingId || (String(Date.now()) + Math.random().toString(36).slice(2, 7));
   setDoc(doc(db, 'users', uid, 'events', id), data)
     .catch(() => showSync('저장하지 못했어요. 인터넷 연결을 확인하고 다시 시도해 주세요.'));
