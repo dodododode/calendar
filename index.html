@@ -36,10 +36,15 @@ button{cursor:pointer;border:0;background:none;padding:0}
 .cal{background:var(--card);border-radius:28px;padding:14px 12px;box-shadow:var(--shadow);display:flex;flex-direction:column;gap:6px}
 .grid{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:2px}
 .wd{margin:0;text-align:center;font-size:14px;font-weight:500;color:var(--sub);padding:4px 0}
-.day{height:50px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;border-radius:16px}
+.day{height:58px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;border-radius:16px}
 .day .num{width:38px;height:38px;border-radius:19px;display:flex;align-items:center;justify-content:center;font-size:17px;font-weight:500}
-.day .dot{width:6px;height:6px;border-radius:3px;background:transparent}
-.day.has .dot{background:var(--accent)}
+.day .bar{align-self:stretch;height:6px;margin:0 -1px}
+.day .bar.on{background:var(--dot)}
+.day .bar.start{margin-left:8px;border-radius:3px 0 0 3px}
+.day .bar.end{margin-right:8px;border-radius:0 3px 3px 0}
+.day .bar.start.end{border-radius:3px}
+.day .dots{display:flex;gap:3px;height:6px}
+.day .dot{width:6px;height:6px;border-radius:3px;background:var(--dot)}
 .day.today .num{box-shadow:inset 0 0 0 2px var(--accent);font-weight:700}
 .day.sel .num{background:var(--accent);color:var(--accent-text);font-weight:700;box-shadow:none}
 .list{display:flex;flex-direction:column;gap:10px}
@@ -55,10 +60,15 @@ button{cursor:pointer;border:0;background:none;padding:0}
 .backdrop[hidden]{display:none}
 .sheet{width:100%;max-width:430px;max-height:92vh;overflow-y:auto;background:var(--bg);border-radius:28px 28px 0 0;padding:20px 16px 24px;display:flex;flex-direction:column;gap:14px}
 .sheet h2{margin:0;padding:0 4px;font-size:22px;font-weight:700}
-.field{display:flex;flex-direction:column;gap:6px}
+.field{display:flex;flex-direction:column;gap:6px;min-width:0}
 .field label,.field .lab{padding:0 4px;font-size:15px;font-weight:500;color:var(--sub)}
 .field input[type=text],.field input[type=date],.field input[type=time]{width:100%;height:52px;padding:0 18px;border:0;border-radius:26px;background:var(--card);font-size:17px}
 .field input::placeholder{color:inherit;opacity:.6}
+/* 아이폰에서 날짜·시간 칸이 화면 밖으로 나가지 않게 */
+.field input[type=date],.field input[type=time]{-webkit-appearance:none;appearance:none;display:block;min-width:0;max-width:100%}
+input::-webkit-date-and-time-value{text-align:left}
+.link{align-self:flex-start;height:44px;padding:0 6px;font-size:16px;font-weight:500;color:var(--text);text-decoration:underline}
+.ev .nodot{flex:none;width:12px;height:12px;border-radius:6px;background:var(--dot);margin:0 4px}
 .two{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
 .colors{display:flex;gap:14px;padding:4px}
 .colors label{position:relative;width:44px;height:44px;border-radius:22px;background:var(--dot);display:flex;align-items:center;justify-content:center;cursor:pointer;padding:0}
@@ -149,6 +159,11 @@ button{cursor:pointer;border:0;background:none;padding:0}
         <input id="fTime" type="time">
       </div>
     </div>
+    <div class="field" id="endField" hidden>
+      <label for="fEnd">종료 날짜 (며칠 이어지는 일정)</label>
+      <input id="fEnd" type="date">
+    </div>
+    <button class="link" id="endToggle" type="button">+ 종료 날짜 추가</button>
     <div class="field" role="radiogroup" aria-labelledby="colorLab">
       <span class="lab" id="colorLab">색상</span>
       <div class="colors" id="colors"></div>
@@ -205,6 +220,8 @@ const $ = (id) => document.getElementById(id);
 const pad = (n) => (n < 10 ? '0' : '') + n;
 const key = (y, m, d) => y + '-' + pad(m + 1) + '-' + pad(d);
 const parse = (k) => { const p = k.split('-'); return new Date(+p[0], +p[1] - 1, +p[2]); };
+const fmtDay = (k) => { const d = parse(k); return (d.getMonth() + 1) + '월 ' + d.getDate() + '일'; };
+const endOf = (e) => (e.endDate && e.endDate > e.date ? e.endDate : e.date);
 
 const now = new Date();
 const todayKey = key(now.getFullYear(), now.getMonth(), now.getDate());
@@ -220,7 +237,7 @@ let unsub = null;
 function showSync(msg) { const el = $('syncErr'); el.textContent = msg; el.hidden = false; }
 
 function eventsOn(k) {
-  return events.filter((e) => e.date === k)
+  return events.filter((e) => e.date <= k && k <= endOf(e))
     .sort((a, b) => (a.time || '').localeCompare(b.time || ''));
 }
 
@@ -230,19 +247,38 @@ function renderCalendar() {
   box.textContent = '';
   const first = new Date(view.y, view.m, 1).getDay();
   const count = new Date(view.y, view.m + 1, 0).getDate();
-  const has = {};
-  events.forEach((e) => { has[e.date] = true; });
+  // 하루짜리 일정은 점, 며칠 이어지는 일정은 긴 막대
+  const marks = {};
+  const mark = (k) => (marks[k] || (marks[k] = { bar: null, dots: [], n: 0 }));
+  events.forEach((e) => {
+    const end = endOf(e);
+    if (end === e.date) {
+      const m = mark(e.date); m.n++;
+      if (m.dots.length < 3) m.dots.push(e.color || 0);
+      return;
+    }
+    for (let d = 1; d <= count; d++) {
+      const k = key(view.y, view.m, d);
+      if (k < e.date || k > end) continue;
+      const m = mark(k); m.n++;
+      if (!m.bar) m.bar = { color: e.color || 0, start: k === e.date, end: k === end };
+    }
+  });
   for (let i = 0; i < first; i++) box.appendChild(document.createElement('span'));
   for (let d = 1; d <= count; d++) {
     const k = key(view.y, view.m, d);
     const b = document.createElement('button');
     b.type = 'button';
-    b.className = 'day' + (k === todayKey ? ' today' : '') + (k === selected ? ' sel' : '') + (has[k] ? ' has' : '');
-    b.setAttribute('aria-label', (view.m + 1) + '월 ' + d + '일' + (k === todayKey ? ', 오늘' : '') + (has[k] ? ', 일정 있음' : ''));
+    b.className = 'day' + (k === todayKey ? ' today' : '') + (k === selected ? ' sel' : '');
+    b.setAttribute('aria-label', (view.m + 1) + '월 ' + d + '일' + (k === todayKey ? ', 오늘' : '') + (marks[k] ? ', 일정 ' + marks[k].n + '개' : ''));
     b.setAttribute('aria-pressed', k === selected ? 'true' : 'false');
     const num = document.createElement('span'); num.className = 'num'; num.textContent = d;
-    const dot = document.createElement('span'); dot.className = 'dot';
-    b.appendChild(num); b.appendChild(dot);
+    const mk = marks[k];
+    const bar = document.createElement('span');
+    bar.className = 'bar' + (mk && mk.bar ? ' on c' + mk.bar.color + (mk.bar.start ? ' start' : '') + (mk.bar.end ? ' end' : '') : '');
+    const dots = document.createElement('span'); dots.className = 'dots';
+    if (mk) mk.dots.forEach((c) => { const sp = document.createElement('span'); sp.className = 'dot c' + c; dots.appendChild(sp); });
+    b.appendChild(num); b.appendChild(bar); b.appendChild(dots);
     b.addEventListener('click', () => { selected = k; render(); });
     box.appendChild(b);
   }
@@ -265,16 +301,19 @@ function renderList() {
     const b = document.createElement('button');
     b.type = 'button';
     b.className = 'ev c' + (e.color || 0);
-    const t = document.createElement('span'); t.className = 'time'; t.textContent = e.time || '하루';
+    const t = document.createElement('span');
+    if (e.time) { t.className = 'time'; t.textContent = e.time; } else { t.className = 'nodot'; }
     const body = document.createElement('span'); body.className = 'body';
     const title = document.createElement('span'); title.className = 'title'; title.textContent = e.title;
     body.appendChild(title);
-    if (e.place) {
-      const pl = document.createElement('span'); pl.className = 'place'; pl.textContent = e.place;
+    const range = endOf(e) !== e.date ? fmtDay(e.date) + ' ~ ' + fmtDay(e.endDate) : '';
+    const subText = [range, e.place].filter(Boolean).join(' · ');
+    if (subText) {
+      const pl = document.createElement('span'); pl.className = 'place'; pl.textContent = subText;
       body.appendChild(pl);
     }
     b.appendChild(t); b.appendChild(body);
-    b.setAttribute('aria-label', (e.time || '하루 종일') + ' ' + e.title + (e.place ? ', ' + e.place : '') + ', 눌러서 수정');
+    b.setAttribute('aria-label', (e.time ? e.time + ' ' : '') + e.title + (subText ? ', ' + subText : '') + ', 눌러서 수정');
     b.addEventListener('click', () => openSheet(e));
     box.appendChild(b);
   });
@@ -321,6 +360,9 @@ function openSheet(ev) {
   $('fPlace').value = ev ? (ev.place || '') : '';
   $('fDate').value = ev ? ev.date : selected;
   $('fTime').value = ev ? (ev.time || '') : '';
+  const hasEnd = !!(ev && endOf(ev) !== ev.date);
+  $('fEnd').value = hasEnd ? ev.endDate : '';
+  showEnd(hasEnd);
   setColor(ev ? (ev.color || 0) : 0);
   $('delBtn').hidden = !ev;
   $('delBtn').textContent = '삭제';
@@ -328,6 +370,18 @@ function openSheet(ev) {
   $('backdrop').hidden = false;
   $('fTitle').focus();
 }
+
+function showEnd(on) {
+  $('endField').hidden = !on;
+  $('endToggle').hidden = on;
+  if (on) $('fEnd').min = $('fDate').value || '';
+}
+$('fDate').addEventListener('change', () => {
+  // 날짜를 바꾸면 종료 날짜 칸이 나타남
+  showEnd(true);
+  if ($('fEnd').value && $('fEnd').value < $('fDate').value) $('fEnd').value = '';
+});
+$('endToggle').addEventListener('click', () => { showEnd(true); $('fEnd').focus(); });
 
 function closeSheet() {
   $('backdrop').hidden = true;
@@ -344,7 +398,10 @@ $('form').addEventListener('submit', (e) => {
   const date = $('fDate').value;
   if (!title) { showErr('제목을 입력해 주세요.'); $('fTitle').focus(); return; }
   if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) { showErr('날짜를 골라 주세요.'); $('fDate').focus(); return; }
-  const data = { title: title, place: $('fPlace').value.trim(), date: date, time: $('fTime').value || '', color: getColor() };
+  let end = $('endField').hidden ? '' : $('fEnd').value;
+  if (end && end < date) { showErr('종료 날짜는 시작 날짜와 같거나 뒤여야 해요.'); $('fEnd').focus(); return; }
+  if (end === date) end = '';
+  const data = { title: title, place: $('fPlace').value.trim(), date: date, endDate: end, time: $('fTime').value || '', color: getColor() };
   const id = editingId || (String(Date.now()) + Math.random().toString(36).slice(2, 7));
   setDoc(doc(db, 'users', uid, 'events', id), data)
     .catch(() => showSync('저장하지 못했어요. 인터넷 연결을 확인하고 다시 시도해 주세요.'));
