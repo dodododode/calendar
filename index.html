@@ -99,6 +99,12 @@ select.pick{-webkit-appearance:none;appearance:none;display:block;line-height:52
 .results .rn{font-size:16px;font-weight:700;overflow-wrap:anywhere}
 .results .ra{font-size:14px;color:var(--sub);overflow-wrap:anywhere}
 .results .src{margin:0;padding:4px 12px;font-size:13px;color:var(--sub)}
+.row{position:relative;border-radius:24px;overflow:hidden;touch-action:pan-y;box-shadow:var(--shadow)}
+.row .ev{position:relative;box-shadow:none;transition:transform .18s ease-out}
+.row.drag .ev{transition:none}
+.row .del{position:absolute;top:0;right:0;bottom:0;width:88px;background:var(--danger);color:#FFFFFF;font-size:16px;font-weight:700}
+@media (prefers-color-scheme: dark){.row .del{color:#10131A}}
+.results .grp{margin:0;padding:6px 12px 2px;font-size:13px;font-weight:700;color:var(--sub)}
 .ev .nodot{flex:none;width:12px;height:12px;border-radius:6px;background:var(--dot);margin:0 4px}
 .two{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
 .colors{display:flex;gap:14px;padding:4px}
@@ -288,7 +294,7 @@ function showSync(msg) { const el = $('syncErr'); el.textContent = msg; el.hidde
 
 function eventsOn(k) {
   return events.filter((e) => e.date <= k && k <= endOf(e))
-    .sort((a, b) => (a.time || '').localeCompare(b.time || ''));
+    .sort((a, b) => (a.time || '').localeCompare(b.time || '') || (a.title || '').localeCompare(b.title || ''));
 }
 
 function renderCalendar() {
@@ -364,9 +370,67 @@ function renderList() {
     }
     b.appendChild(t); b.appendChild(body);
     b.setAttribute('aria-label', (e.time ? e.time + ' ' : '') + e.title + (subText ? ', ' + subText : '') + ', 눌러서 수정');
-    b.addEventListener('click', () => openSheet(e));
-    box.appendChild(b);
+    const row = document.createElement('div'); row.className = 'row';
+    const del = document.createElement('button'); del.type = 'button'; del.className = 'del'; del.textContent = '삭제';
+    del.setAttribute('aria-label', e.title + ' 삭제');
+    del.addEventListener('click', () => {
+      if (!uid) return;
+      deleteDoc(doc(db, 'users', uid, 'events', e.id))
+        .catch(() => showSync('삭제하지 못했어요. 인터넷 연결을 확인하고 다시 시도해 주세요.'));
+    });
+    b.addEventListener('click', () => {
+      if (row.dataset.swiped) return;
+      if (row.classList.contains('open')) { closeRows(); return; }
+      openSheet(e);
+    });
+    row.appendChild(del); row.appendChild(b);
+    attachSwipe(row, b);
+    box.appendChild(row);
   });
+}
+
+/* 일정을 왼쪽으로 밀면 삭제 버튼이 나옴 */
+const SWIPE_W = 88;
+function closeRows(except) {
+  document.querySelectorAll('.row.open').forEach((r) => {
+    if (r === except) return;
+    r.classList.remove('open');
+    const c = r.querySelector('.ev'); if (c) c.style.transform = '';
+  });
+}
+function attachSwipe(row, card) {
+  let x0 = 0, y0 = 0, dx = 0, base = 0, active = false, horizontal = false;
+  row.addEventListener('touchstart', (ev) => {
+    const t = ev.touches[0];
+    x0 = t.clientX; y0 = t.clientY; dx = 0; active = true; horizontal = false;
+    base = row.classList.contains('open') ? -SWIPE_W : 0;
+    closeRows(row);
+  }, { passive: true });
+  row.addEventListener('touchmove', (ev) => {
+    if (!active) return;
+    const t = ev.touches[0];
+    dx = t.clientX - x0;
+    const dy = t.clientY - y0;
+    if (!horizontal) {
+      if (Math.abs(dx) < 8 || Math.abs(dx) < Math.abs(dy)) return;
+      horizontal = true;
+      row.classList.add('drag');
+    }
+    card.style.transform = 'translateX(' + Math.max(-SWIPE_W, Math.min(0, base + dx)) + 'px)';
+  }, { passive: true });
+  const end = () => {
+    if (!active) return;
+    active = false;
+    if (!horizontal) return;
+    row.classList.remove('drag');
+    const open = base + dx < -SWIPE_W / 2;
+    row.classList.toggle('open', open);
+    card.style.transform = open ? 'translateX(' + (-SWIPE_W) + 'px)' : '';
+    row.dataset.swiped = '1';
+    setTimeout(() => { delete row.dataset.swiped; }, 350);
+  };
+  row.addEventListener('touchend', end);
+  row.addEventListener('touchcancel', end);
 }
 
 function render() { renderCalendar(); renderList(); }
@@ -566,23 +630,37 @@ function paintPlaceState() {
   else if ($('fPlace').value.trim()) placeSay('찾기를 눌러 장소를 고르면 차에서 길안내를 쓸 수 있어요.');
   else placeSay('');
 }
-function showPlaceResults(list) {
+function distText(m) {
+  const n = +m;
+  if (!n) return '';
+  return n < 1000 ? Math.round(n) + 'm' : (n / 1000).toFixed(1) + 'km';
+}
+function showPlaceResults(near, rest) {
   const box = $('placeResults');
   box.textContent = '';
-  list.slice(0, 8).forEach((d) => {
-    const b = document.createElement('button');
-    b.type = 'button';
-    const n = document.createElement('span'); n.className = 'rn'; n.textContent = d.place_name || '';
-    const a = document.createElement('span'); a.className = 'ra'; a.textContent = d.road_address_name || d.address_name || '';
-    b.appendChild(n); b.appendChild(a);
-    b.addEventListener('click', () => {
-      formPlaceId = String(d.id || '');
-      box.hidden = true;
-      box.textContent = '';
-      paintPlaceState();
+  const group = (title, list, withDist) => {
+    if (!list.length) return;
+    const h = document.createElement('p'); h.className = 'grp'; h.textContent = title;
+    box.appendChild(h);
+    list.forEach((d) => {
+      const b = document.createElement('button');
+      b.type = 'button';
+      const n = document.createElement('span'); n.className = 'rn'; n.textContent = d.place_name || '';
+      const addr = d.road_address_name || d.address_name || '';
+      const dist = withDist ? distText(d.distance) : '';
+      const a2 = document.createElement('span'); a2.className = 'ra'; a2.textContent = [dist, addr].filter(Boolean).join(' · ');
+      b.appendChild(n); b.appendChild(a2);
+      b.addEventListener('click', () => {
+        formPlaceId = String(d.id || '');
+        box.hidden = true;
+        box.textContent = '';
+        paintPlaceState();
+      });
+      box.appendChild(b);
     });
-    box.appendChild(b);
-  });
+  };
+  group('가까운 곳', near, true);
+  group(near.length ? '전체 검색' : '검색 결과', rest, false);
   const src = document.createElement('p'); src.className = 'src'; src.textContent = '장소 검색: 카카오맵';
   box.appendChild(src);
   box.hidden = false;
@@ -594,17 +672,54 @@ $('fPlace').addEventListener('input', () => {
   $('placeResults').hidden = true;
   paintPlaceState();
 });
+
+/* 현재 위치: 가까운 곳을 먼저 보여 주는 데만 쓰고 저장하지 않음 */
+let posDenied = false;
+function getPos() {
+  if (posDenied || !navigator.geolocation) return Promise.resolve(null);
+  return new Promise((resolve) => {
+    navigator.geolocation.getCurrentPosition(
+      (p) => resolve({ lat: p.coords.latitude, lng: p.coords.longitude }),
+      (err) => { if (err && err.code === 1) posDenied = true; resolve(null); },
+      { enableHighAccuracy: false, timeout: 6000, maximumAge: 300000 }
+    );
+  });
+}
+function kSearch(k, q, opts) {
+  return new Promise((resolve) => {
+    new k.maps.services.Places().keywordSearch(q, (data, status) => {
+      if (status === k.maps.services.Status.OK) resolve(data || []);
+      else if (status === k.maps.services.Status.ZERO_RESULT) resolve([]);
+      else resolve(null);
+    }, opts);
+  });
+}
 $('placeFind').addEventListener('click', () => {
   const q = $('fPlace').value.trim();
   if (!q) { placeSay('장소 이름을 먼저 입력해 주세요.'); $('fPlace').focus(); return; }
   placeSay('찾는 중이에요…');
-  loadKakao().then((k) => {
-    const ps = new k.maps.services.Places();
-    ps.keywordSearch(q, (data, status) => {
-      if (status === k.maps.services.Status.OK && data && data.length) showPlaceResults(data);
-      else if (status === k.maps.services.Status.ZERO_RESULT) { $('placeResults').hidden = true; placeSay('찾은 장소가 없어요. 다른 이름으로 찾아 보세요.'); }
-      else { $('placeResults').hidden = true; placeSay('장소를 찾지 못했어요. 잠시 뒤에 다시 시도해 주세요.'); }
-    });
+  Promise.all([loadKakao(), getPos()]).then(([k, pos]) => {
+    const all = kSearch(k, q, { size: 8 });
+    const near = pos
+      ? kSearch(k, q, { location: new k.maps.LatLng(pos.lat, pos.lng), radius: 5000, sort: k.maps.services.SortBy.DISTANCE, size: 5 })
+      : Promise.resolve([]);
+    return Promise.all([near, all]);
+  }).then(([near, all]) => {
+    if (near === null && all === null) {
+      $('placeResults').hidden = true;
+      placeSay('장소를 찾지 못했어요. 잠시 뒤에 다시 시도해 주세요.');
+      return;
+    }
+    const nearList = (near || []).slice(0, 4);
+    const seen = {};
+    nearList.forEach((d) => { seen[d.id] = true; });
+    const rest = (all || []).filter((d) => !seen[d.id]).slice(0, 6);
+    if (!nearList.length && !rest.length) {
+      $('placeResults').hidden = true;
+      placeSay('찾은 장소가 없어요. 다른 이름으로 찾아 보세요.');
+      return;
+    }
+    showPlaceResults(nearList, rest);
   }).catch(() => { placeSay('장소 검색을 불러오지 못했어요. 인터넷 연결을 확인해 주세요.'); });
 });
 
@@ -638,11 +753,6 @@ $('form').addEventListener('submit', (e) => {
 
 $('delBtn').addEventListener('click', () => {
   if (!uid || !editingId) return;
-  if (!deleteArmed) {
-    deleteArmed = true;
-    $('delBtn').textContent = '정말 삭제';
-    return;
-  }
   deleteDoc(doc(db, 'users', uid, 'events', editingId))
     .catch(() => showSync('삭제하지 못했어요. 인터넷 연결을 확인하고 다시 시도해 주세요.'));
   closeSheet();
