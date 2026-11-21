@@ -8,7 +8,7 @@
 <style>
 :root{
   --bg:#F3F5F9;--card:#FFFFFF;--chip:#EDF0F5;--text:#1A1F2B;--sub:#525B6B;
-  --accent:#3D6BEA;--accent-text:#FFFFFF;--danger:#C2255C;
+  --accent:#3D6BEA;--accent-text:#FFFFFF;--danger:#C2255C;--band:#DCE5FF;
   --shadow:0 2px 10px rgba(30,45,80,.06);--backdrop:rgba(20,26,40,.45);
 }
 .c0{--tint:#E3EAFF;--dot:#3D6BEA}.c1{--tint:#FFE8DB;--dot:#C2470A}.c2{--tint:#DCF2E9;--dot:#0B7A5B}
@@ -16,7 +16,7 @@
 @media (prefers-color-scheme: dark){
   :root{
     --bg:#10131A;--card:#1A1F29;--chip:#272E3A;--text:#F3F5F8;--sub:#AEB7C4;
-    --accent:#8FAAFF;--accent-text:#0E1530;--danger:#FF8FB0;
+    --accent:#8FAAFF;--accent-text:#0E1530;--danger:#FF8FB0;--band:#2A3558;
     --shadow:none;--backdrop:rgba(0,0,0,.6);
   }
   .c0{--tint:#232C4A;--dot:#8FAAFF}.c1{--tint:#3D2C23;--dot:#FF9A66}.c2{--tint:#1F3A30;--dot:#4FD1A5}
@@ -25,7 +25,7 @@
 *{box-sizing:border-box}
 html,body{margin:0}
 body{background:var(--bg);color:var(--text);font-family:'Noto Sans KR',system-ui,sans-serif;-webkit-text-size-adjust:100%}
-button,input{font-family:inherit;color:inherit}
+button,input,select{font-family:inherit;color:inherit}
 button{cursor:pointer;border:0;background:none;padding:0}
 :focus-visible{outline:3px solid var(--accent);outline-offset:2px}
 .app{max-width:430px;margin:0 auto;min-height:100vh;padding:20px 16px 110px;display:flex;flex-direction:column;gap:16px}
@@ -68,6 +68,23 @@ button{cursor:pointer;border:0;background:none;padding:0}
 .field input[type=date],.field input[type=time]{-webkit-appearance:none;appearance:none;display:block;min-width:0;max-width:100%}
 input::-webkit-date-and-time-value{text-align:left}
 .link{align-self:flex-start;height:44px;padding:0 6px;font-size:16px;font-weight:500;color:var(--text);text-decoration:underline}
+.pick{width:100%;height:52px;padding:0 18px;border:0;border-radius:26px;background:var(--card);font-size:17px;text-align:left;display:flex;align-items:center}
+select.pick{-webkit-appearance:none;appearance:none;display:block;line-height:52px}
+.picker{background:var(--card);border-radius:24px;padding:14px 12px;display:flex;flex-direction:column;gap:6px}
+.pk-top{display:flex;align-items:center;gap:8px;padding:0 4px}
+.pk-top strong{flex:1;font-size:18px}
+.picker .round{background:var(--chip)}
+.pk-grid{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));row-gap:4px}
+.pd{height:44px;display:flex;align-items:center;justify-content:center}
+.pd .num{width:40px;height:40px;border-radius:20px;display:flex;align-items:center;justify-content:center;font-size:16px;font-weight:500}
+.pd.today .num{box-shadow:inset 0 0 0 2px var(--accent)}
+.pd.in{background:var(--band)}
+.pd.rs{background:linear-gradient(to right,transparent 50%,var(--band) 50%)}
+.pd.re{background:linear-gradient(to right,var(--band) 50%,transparent 50%)}
+.pd.rs .num,.pd.re .num,.pd.one .num{background:var(--accent);color:var(--accent-text);font-weight:700;box-shadow:none}
+.pk-bottom{display:flex;align-items:center;gap:10px;padding:0 4px}
+.pk-bottom .note{flex:1;padding:0}
+.picker .round.ok{flex:none;width:52px;height:52px;border-radius:26px;background:var(--accent);color:var(--accent-text)}
 .ev .nodot{flex:none;width:12px;height:12px;border-radius:6px;background:var(--dot);margin:0 4px}
 .two{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
 .colors{display:flex;gap:14px;padding:4px}
@@ -149,21 +166,29 @@ input::-webkit-date-and-time-value{text-align:left}
       <label for="fPlace">장소 (선택)</label>
       <input id="fPlace" type="text" placeholder="예: 시청역 2번 출구" autocomplete="off" maxlength="60">
     </div>
-    <div class="two">
-      <div class="field">
-        <label for="fDate">날짜</label>
-        <input id="fDate" type="date">
+    <div class="field">
+      <span class="lab" id="dateLab">날짜</span>
+      <button class="pick" id="dateBtn" type="button" aria-labelledby="dateLab dateBtn" aria-expanded="false"></button>
+    </div>
+    <div class="picker" id="picker" hidden>
+      <div class="pk-top">
+        <strong id="pkTitle"></strong>
+        <button class="round" id="pkPrev" type="button" aria-label="이전 달"><svg aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M15 5l-7 7 7 7"/></svg></button>
+        <button class="round" id="pkNext" type="button" aria-label="다음 달"><svg aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M9 5l7 7-7 7"/></svg></button>
       </div>
-      <div class="field">
-        <label for="fTime">시간</label>
-        <input id="fTime" type="time">
+      <div class="grid" aria-hidden="true">
+        <p class="wd">일</p><p class="wd">월</p><p class="wd">화</p><p class="wd">수</p><p class="wd">목</p><p class="wd">금</p><p class="wd">토</p>
+      </div>
+      <div class="pk-grid" id="pkDays"></div>
+      <div class="pk-bottom">
+        <p class="note" id="pkHint" aria-live="polite"></p>
+        <button class="round ok" id="pkOk" type="button" aria-label="날짜 선택 완료"><svg aria-hidden="true" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12l5 5 9-10"/></svg></button>
       </div>
     </div>
-    <div class="field" id="endField" hidden>
-      <label for="fEnd">종료 날짜 (며칠 이어지는 일정)</label>
-      <input id="fEnd" type="date">
+    <div class="field">
+      <label for="fTime">시간</label>
+      <select class="pick" id="fTime"></select>
     </div>
-    <button class="link" id="endToggle" type="button">+ 종료 날짜 추가</button>
     <div class="field" role="radiogroup" aria-labelledby="colorLab">
       <span class="lab" id="colorLab">색상</span>
       <div class="colors" id="colors"></div>
@@ -358,11 +383,11 @@ function openSheet(ev) {
   $('sheetTitle').textContent = ev ? '일정 수정' : '일정 추가';
   $('fTitle').value = ev ? ev.title : '';
   $('fPlace').value = ev ? (ev.place || '') : '';
-  $('fDate').value = ev ? ev.date : selected;
-  $('fTime').value = ev ? (ev.time || '') : '';
-  const hasEnd = !!(ev && endOf(ev) !== ev.date);
-  $('fEnd').value = hasEnd ? ev.endDate : '';
-  showEnd(hasEnd);
+  formStart = ev ? ev.date : selected;
+  formEnd = ev && endOf(ev) !== ev.date ? ev.endDate : '';
+  setTime(ev ? (ev.time || '') : '');
+  closePicker();
+  paintDateBtn();
   setColor(ev ? (ev.color || 0) : 0);
   $('delBtn').hidden = !ev;
   $('delBtn').textContent = '삭제';
@@ -371,17 +396,95 @@ function openSheet(ev) {
   $('fTitle').focus();
 }
 
-function showEnd(on) {
-  $('endField').hidden = !on;
-  $('endToggle').hidden = on;
-  if (on) $('fEnd').min = $('fDate').value || '';
+/* 날짜 고르기: 한 번 누르면 하루, 이어서 뒤 날짜를 누르면 그날까지 */
+let formStart = '', formEnd = '';
+let pkStart = '', pkEnd = '', pkFresh = true, pv = { y: 0, m: 0 };
+
+function paintDateBtn() {
+  $('dateBtn').textContent = formEnd && formEnd > formStart
+    ? fmtDay(formStart) + ' ~ ' + fmtDay(formEnd) : fmtDay(formStart);
 }
-$('fDate').addEventListener('change', () => {
-  // 날짜를 바꾸면 종료 날짜 칸이 나타남
-  showEnd(true);
-  if ($('fEnd').value && $('fEnd').value < $('fDate').value) $('fEnd').value = '';
+function closePicker() {
+  $('picker').hidden = true;
+  $('dateBtn').setAttribute('aria-expanded', 'false');
+}
+function openPicker() {
+  pkStart = formStart;
+  pkEnd = formEnd && formEnd > formStart ? formEnd : '';
+  pkFresh = true;
+  const d = parse(formStart);
+  pv = { y: d.getFullYear(), m: d.getMonth() };
+  $('picker').hidden = false;
+  $('dateBtn').setAttribute('aria-expanded', 'true');
+  renderPicker();
+}
+function renderPicker() {
+  $('pkTitle').textContent = pv.y + '년 ' + (pv.m + 1) + '월';
+  const box = $('pkDays');
+  box.textContent = '';
+  const first = new Date(pv.y, pv.m, 1).getDay();
+  const count = new Date(pv.y, pv.m + 1, 0).getDate();
+  for (let i = 0; i < first; i++) box.appendChild(document.createElement('span'));
+  for (let d = 1; d <= count; d++) {
+    const k = key(pv.y, pv.m, d);
+    const b = document.createElement('button');
+    b.type = 'button';
+    let cls = 'pd';
+    let on = false;
+    if (pkEnd) {
+      if (k === pkStart) { cls += ' rs'; on = true; }
+      else if (k === pkEnd) { cls += ' re'; on = true; }
+      else if (k > pkStart && k < pkEnd) { cls += ' in'; on = true; }
+    } else if (k === pkStart) { cls += ' one'; on = true; }
+    if (k === todayKey) cls += ' today';
+    b.className = cls;
+    b.setAttribute('aria-pressed', on ? 'true' : 'false');
+    b.setAttribute('aria-label', (pv.m + 1) + '월 ' + d + '일');
+    const num = document.createElement('span'); num.className = 'num'; num.textContent = d;
+    b.appendChild(num);
+    b.addEventListener('click', () => {
+      if (pkFresh || !pkStart || pkEnd || k <= pkStart) { pkStart = k; pkEnd = ''; pkFresh = false; }
+      else { pkEnd = k; }
+      renderPicker();
+    });
+    box.appendChild(b);
+  }
+  $('pkHint').textContent = pkEnd
+    ? fmtDay(pkStart) + ' ~ ' + fmtDay(pkEnd)
+    : fmtDay(pkStart) + ' 하루 · 끝나는 날을 이어서 누르면 길게 선택돼요';
+}
+$('dateBtn').addEventListener('click', () => { if ($('picker').hidden) openPicker(); else closePicker(); });
+$('pkPrev').addEventListener('click', () => { pv.m--; if (pv.m < 0) { pv.m = 11; pv.y--; } renderPicker(); });
+$('pkNext').addEventListener('click', () => { pv.m++; if (pv.m > 11) { pv.m = 0; pv.y++; } renderPicker(); });
+$('pkOk').addEventListener('click', () => {
+  formStart = pkStart;
+  formEnd = pkEnd;
+  paintDateBtn();
+  closePicker();
+  $('dateBtn').focus();
 });
-$('endToggle').addEventListener('click', () => { showEnd(true); $('fEnd').focus(); });
+
+/* 시간: 30분 단위 */
+function timeLabel(v) {
+  const h = +v.slice(0, 2), mm = v.slice(3, 5);
+  return (h < 12 ? '오전 ' : '오후 ') + ((h % 12) || 12) + ':' + mm;
+}
+function buildTimes() {
+  const sel = $('fTime');
+  const add = (v, label) => { const o = document.createElement('option'); o.value = v; o.textContent = label; sel.appendChild(o); };
+  add('', '시간 없음');
+  for (let h = 0; h < 24; h++) ['00', '30'].forEach((mm) => { const v = pad(h) + ':' + mm; add(v, timeLabel(v)); });
+}
+function setTime(v) {
+  const sel = $('fTime');
+  sel.querySelectorAll('option[data-extra]').forEach((o) => o.remove());
+  if (v && !Array.from(sel.options).some((o) => o.value === v)) {
+    // 예전에 30분 단위가 아닌 시간으로 저장한 일정은 그 시간을 그대로 보여 줌
+    const o = document.createElement('option'); o.value = v; o.textContent = timeLabel(v); o.dataset.extra = '1';
+    sel.appendChild(o);
+  }
+  sel.value = v;
+}
 
 function closeSheet() {
   $('backdrop').hidden = true;
@@ -395,12 +498,10 @@ $('form').addEventListener('submit', (e) => {
   e.preventDefault();
   if (!uid) return;
   const title = $('fTitle').value.trim();
-  const date = $('fDate').value;
+  const date = formStart;
   if (!title) { showErr('제목을 입력해 주세요.'); $('fTitle').focus(); return; }
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) { showErr('날짜를 골라 주세요.'); $('fDate').focus(); return; }
-  let end = $('endField').hidden ? '' : $('fEnd').value;
-  if (end && end < date) { showErr('종료 날짜는 시작 날짜와 같거나 뒤여야 해요.'); $('fEnd').focus(); return; }
-  if (end === date) end = '';
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) { showErr('날짜를 골라 주세요.'); $('dateBtn').focus(); return; }
+  const end = formEnd && formEnd > date ? formEnd : '';
   const data = { title: title, place: $('fPlace').value.trim(), date: date, endDate: end, time: $('fTime').value || '', color: getColor() };
   const id = editingId || (String(Date.now()) + Math.random().toString(36).slice(2, 7));
   setDoc(doc(db, 'users', uid, 'events', id), data)
@@ -552,6 +653,7 @@ $('carUnlink').addEventListener('click', async () => {
 });
 
 buildColors();
+buildTimes();
 </script>
 </body>
 </html>
