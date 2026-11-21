@@ -91,6 +91,14 @@ select.pick{-webkit-appearance:none;appearance:none;display:block;line-height:52
 .seg button{height:44px;padding:0 16px;border-radius:22px;font-size:16px;font-weight:500}
 .seg button.on{background:var(--accent);color:var(--accent-text);font-weight:700}
 .seg.off{opacity:.5}
+.time-row input{flex:1;min-width:0}
+.find{flex:none;height:52px;padding:0 18px;border-radius:26px;background:var(--card);font-size:16px;font-weight:700}
+.results{display:flex;flex-direction:column;gap:4px;padding:8px;border-radius:20px;background:var(--card)}
+.results button{min-height:44px;padding:10px 12px;border-radius:14px;text-align:left;display:flex;flex-direction:column;gap:2px}
+.results button:active{background:var(--chip)}
+.results .rn{font-size:16px;font-weight:700;overflow-wrap:anywhere}
+.results .ra{font-size:14px;color:var(--sub);overflow-wrap:anywhere}
+.results .src{margin:0;padding:4px 12px;font-size:13px;color:var(--sub)}
 .ev .nodot{flex:none;width:12px;height:12px;border-radius:6px;background:var(--dot);margin:0 4px}
 .two{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
 .colors{display:flex;gap:14px;padding:4px}
@@ -170,7 +178,12 @@ select.pick{-webkit-appearance:none;appearance:none;display:block;line-height:52
     </div>
     <div class="field">
       <label for="fPlace">장소 (선택)</label>
-      <input id="fPlace" type="text" placeholder="예: 시청역 2번 출구" autocomplete="off" maxlength="60">
+      <div class="time-row">
+        <input id="fPlace" type="text" placeholder="예: 서울역" autocomplete="off" maxlength="60">
+        <button class="find" id="placeFind" type="button">찾기</button>
+      </div>
+      <p class="note" id="placeState" aria-live="polite"></p>
+      <div class="results" id="placeResults" hidden></div>
     </div>
     <div class="field">
       <span class="lab" id="dateLab">날짜</span>
@@ -400,6 +413,9 @@ function openSheet(ev) {
   setTime(ev ? (ev.time || '') : '');
   closePicker();
   paintDateBtn();
+  formPlaceId = ev ? (ev.placeId || '') : '';
+  $('placeResults').hidden = true;
+  paintPlaceState();
   setColor(ev ? (ev.color || 0) : 0);
   $('delBtn').hidden = !ev;
   $('delBtn').textContent = '삭제';
@@ -525,6 +541,73 @@ function getTime() {
   return pad(H) + ':' + parts[1];
 }
 
+/* 장소 찾기: 카카오 검색 결과는 화면에만 보여 주고, 저장은 입력한 글자와 장소 번호만 */
+const KAKAO_JS_KEY = '6864016e5d095d1e7ec56d8c1cec9541';
+let formPlaceId = '';
+let kakaoReady = null;
+
+function loadKakao() {
+  if (kakaoReady) return kakaoReady;
+  kakaoReady = new Promise((resolve, reject) => {
+    const sc = document.createElement('script');
+    sc.src = 'https://dapi.kakao.com/v2/maps/sdk.js?appkey=' + KAKAO_JS_KEY + '&libraries=services&autoload=false';
+    sc.onload = () => {
+      try { window.kakao.maps.load(() => resolve(window.kakao)); } catch (e) { reject(e); }
+    };
+    sc.onerror = () => reject(new Error('kakao sdk load failed'));
+    document.head.appendChild(sc);
+  });
+  kakaoReady.catch(() => { kakaoReady = null; });
+  return kakaoReady;
+}
+function placeSay(msg) { $('placeState').textContent = msg; }
+function paintPlaceState() {
+  if (formPlaceId) placeSay('길안내에 쓸 장소를 골랐어요.');
+  else if ($('fPlace').value.trim()) placeSay('찾기를 눌러 장소를 고르면 차에서 길안내를 쓸 수 있어요.');
+  else placeSay('');
+}
+function showPlaceResults(list) {
+  const box = $('placeResults');
+  box.textContent = '';
+  list.slice(0, 8).forEach((d) => {
+    const b = document.createElement('button');
+    b.type = 'button';
+    const n = document.createElement('span'); n.className = 'rn'; n.textContent = d.place_name || '';
+    const a = document.createElement('span'); a.className = 'ra'; a.textContent = d.road_address_name || d.address_name || '';
+    b.appendChild(n); b.appendChild(a);
+    b.addEventListener('click', () => {
+      formPlaceId = String(d.id || '');
+      box.hidden = true;
+      box.textContent = '';
+      paintPlaceState();
+    });
+    box.appendChild(b);
+  });
+  const src = document.createElement('p'); src.className = 'src'; src.textContent = '장소 검색: 카카오맵';
+  box.appendChild(src);
+  box.hidden = false;
+  placeSay('아래에서 맞는 장소를 눌러 주세요.');
+}
+$('fPlace').addEventListener('input', () => {
+  // 글자를 고치면 골라 둔 장소는 풀림
+  formPlaceId = '';
+  $('placeResults').hidden = true;
+  paintPlaceState();
+});
+$('placeFind').addEventListener('click', () => {
+  const q = $('fPlace').value.trim();
+  if (!q) { placeSay('장소 이름을 먼저 입력해 주세요.'); $('fPlace').focus(); return; }
+  placeSay('찾는 중이에요…');
+  loadKakao().then((k) => {
+    const ps = new k.maps.services.Places();
+    ps.keywordSearch(q, (data, status) => {
+      if (status === k.maps.services.Status.OK && data && data.length) showPlaceResults(data);
+      else if (status === k.maps.services.Status.ZERO_RESULT) { $('placeResults').hidden = true; placeSay('찾은 장소가 없어요. 다른 이름으로 찾아 보세요.'); }
+      else { $('placeResults').hidden = true; placeSay('장소를 찾지 못했어요. 잠시 뒤에 다시 시도해 주세요.'); }
+    });
+  }).catch(() => { placeSay('장소 검색을 불러오지 못했어요. 인터넷 연결을 확인해 주세요.'); });
+});
+
 function closeSheet() {
   $('backdrop').hidden = true;
   editingId = null;
@@ -541,7 +624,8 @@ $('form').addEventListener('submit', (e) => {
   if (!title) { showErr('제목을 입력해 주세요.'); $('fTitle').focus(); return; }
   if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) { showErr('날짜를 골라 주세요.'); $('dateBtn').focus(); return; }
   const end = formEnd && formEnd > date ? formEnd : '';
-  const data = { title: title, place: $('fPlace').value.trim(), date: date, endDate: end, time: getTime(), color: getColor() };
+  const placeText = $('fPlace').value.trim();
+  const data = { title: title, place: placeText, placeId: placeText ? formPlaceId : '', date: date, endDate: end, time: getTime(), color: getColor() };
   const id = editingId || (String(Date.now()) + Math.random().toString(36).slice(2, 7));
   setDoc(doc(db, 'users', uid, 'events', id), data)
     .catch(() => showSync('저장하지 못했어요. 인터넷 연결을 확인하고 다시 시도해 주세요.'));
