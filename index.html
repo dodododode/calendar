@@ -119,6 +119,7 @@ button{cursor:pointer;border:0;background:none;padding:0}
   <p class="err" id="syncErr" role="alert" hidden></p>
   <div class="acct">
     <p class="note" id="acctText"></p>
+    <button class="today-btn" id="carBtn" type="button">차량 연결</button>
     <button class="today-btn" id="logoutBtn" type="button">로그아웃</button>
   </div>
 </main>
@@ -161,10 +162,28 @@ button{cursor:pointer;border:0;background:none;padding:0}
   </form>
 </div>
 
+<div class="backdrop" id="carBackdrop" hidden>
+  <form class="sheet" id="carForm" role="dialog" aria-modal="true" aria-labelledby="carTitle" novalidate>
+    <h2 id="carTitle">차량 연결</h2>
+    <p class="note">차량 화면에 보이는 6자리 코드를 입력하세요. 연결하면 그 차량에서 내 일정을 볼 수 있어요.</p>
+    <div class="field">
+      <label for="carCode">연결 코드</label>
+      <input id="carCode" type="text" inputmode="numeric" autocomplete="off" maxlength="6" placeholder="예: 123456">
+    </div>
+    <p class="err" id="carMsg" role="status" hidden></p>
+    <p class="note" id="carCount"></p>
+    <div class="actions">
+      <button class="btn danger" id="carUnlink" type="button" hidden>모두 해제</button>
+      <button class="btn" id="carCancel" type="button">닫기</button>
+      <button class="btn primary" type="submit">연결</button>
+    </div>
+  </form>
+</div>
+
 <script type="module">
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js';
 import { getAuth, GoogleAuthProvider, signInWithPopup, onAuthStateChanged, signOut } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js';
-import { getFirestore, collection, doc, setDoc, deleteDoc, onSnapshot } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
+import { getFirestore, collection, doc, setDoc, deleteDoc, onSnapshot, getDoc, getDocs, updateDoc, serverTimestamp } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
 const firebaseConfig = {
   apiKey: "AIzaSyBrQMaL4z8nAAvhHIjCgA2YCVgsOw1Mc1k",
@@ -402,12 +421,77 @@ onAuthStateChanged(auth, (user) => {
     uid = null;
     events = [];
     $('backdrop').hidden = true;
+    $('carBackdrop').hidden = true;
     $('appView').hidden = true;
     $('addBtn').hidden = true;
     $('loginView').hidden = false;
     $('loginBtn').disabled = false;
     $('loginMsg').textContent = '';
   }
+});
+
+/* 차량 연결 */
+let carArmed = false;
+function carSay(msg, ok) {
+  const el = $('carMsg'); el.textContent = msg; el.style.color = ok ? 'var(--text)' : ''; el.hidden = false;
+}
+async function refreshCars() {
+  try {
+    const snap = await getDocs(collection(db, 'users', uid, 'devices'));
+    $('carCount').textContent = snap.size ? '연결된 차량 ' + snap.size + '대' : '연결된 차량이 없어요.';
+    $('carUnlink').hidden = !snap.size;
+  } catch (e) {
+    $('carCount').textContent = ''; $('carUnlink').hidden = true;
+  }
+}
+function closeCar() { $('carBackdrop').hidden = true; }
+$('carBtn').addEventListener('click', () => {
+  if (!uid) return;
+  carArmed = false;
+  $('carUnlink').textContent = '모두 해제';
+  $('carCode').value = '';
+  $('carMsg').hidden = true;
+  $('carBackdrop').hidden = false;
+  $('carCode').focus();
+  refreshCars();
+});
+$('carCancel').addEventListener('click', closeCar);
+$('carBackdrop').addEventListener('click', (e) => { if (e.target === $('carBackdrop')) closeCar(); });
+$('carForm').addEventListener('keydown', (e) => { if (e.key === 'Escape') closeCar(); });
+$('carForm').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  if (!uid) return;
+  const code = $('carCode').value.trim();
+  if (!/^\d{6}$/.test(code)) { carSay('6자리 숫자를 입력해 주세요.'); return; }
+  try {
+    const ref = doc(db, 'pairings', code);
+    const snap = await getDoc(ref);
+    if (!snap.exists()) { carSay('코드를 찾을 수 없어요. 차량 화면의 코드를 다시 확인해 주세요.'); return; }
+    const d = snap.data();
+    if (d.ownerUid) { carSay('이미 사용된 코드예요. 차량에서 새 코드를 받아 주세요.'); return; }
+    if (typeof d.carUid !== 'string' || !d.carUid) { carSay('코드 정보가 올바르지 않아요. 차량에서 새 코드를 받아 주세요.'); return; }
+    await setDoc(doc(db, 'users', uid, 'devices', d.carUid), { linkedAt: serverTimestamp() });
+    await updateDoc(ref, { ownerUid: uid });
+    carSay('연결됐어요. 차량 화면에 일정이 나타납니다.', true);
+    $('carCode').value = '';
+    refreshCars();
+  } catch (err) {
+    carSay('연결하지 못했어요. 인터넷 연결과 보안 규칙을 확인해 주세요.');
+  }
+});
+$('carUnlink').addEventListener('click', async () => {
+  if (!uid) return;
+  if (!carArmed) { carArmed = true; $('carUnlink').textContent = '정말 해제'; return; }
+  carArmed = false;
+  $('carUnlink').textContent = '모두 해제';
+  try {
+    const snap = await getDocs(collection(db, 'users', uid, 'devices'));
+    await Promise.all(snap.docs.map((x) => deleteDoc(x.ref)));
+    carSay('모든 차량 연결을 해제했어요.', true);
+  } catch (err) {
+    carSay('해제하지 못했어요. 다시 시도해 주세요.');
+  }
+  refreshCars();
 });
 
 buildColors();
